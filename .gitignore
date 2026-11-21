@@ -1,0 +1,48 @@
+# Virtual environment
+.venv/
+venv/
+env/
+ENV/
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+
+# Distribution / packaging
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Environment files
+.env
+.env.local
+.env.*
+
+# Database (auto-created on first run)
+data/app.db
+
+# Uploaded files
+data/uploads/
+
+# Digest outbox
+data/outbox/
+
+# Manager config (contains secrets)
+config/managers.json
+
+# Logs
+*.log
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
