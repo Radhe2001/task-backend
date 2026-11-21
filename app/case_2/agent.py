@@ -21,11 +21,26 @@ from openpyxl.utils import get_column_letter
 
 from .matching import compare_names
 
-AMOUNT_TOL = 1.0  # rupees. ESIC rounds up to the next rupee, so +-1 is rounding, not a mismatch
-STATUSES = ["MATCHED", "NAME_MISMATCH", "AMOUNT_MISMATCH", "MISSING", "NOT_APPLICABLE", "REVIEW", "NOT_CHECKED"]
+AMOUNT_TOL = (
+    1.0  # rupees. ESIC rounds up to the next rupee, so +-1 is rounding, not a mismatch
+)
+STATUSES = [
+    "MATCHED",
+    "NAME_MISMATCH",
+    "AMOUNT_MISMATCH",
+    "MISSING",
+    "NOT_APPLICABLE",
+    "REVIEW",
+    "NOT_CHECKED",
+]
 COLOURS = {
-    "MATCHED": "C6EFCE", "NAME_MISMATCH": "FFEB9C", "AMOUNT_MISMATCH": "FFC7CE", "MISSING": "F4B084",
-    "NOT_APPLICABLE": "E7E6E6", "REVIEW": "DDEBF7", "NOT_CHECKED": "E7E6E6",
+    "MATCHED": "C6EFCE",
+    "NAME_MISMATCH": "FFEB9C",
+    "AMOUNT_MISMATCH": "FFC7CE",
+    "MISSING": "F4B084",
+    "NOT_APPLICABLE": "E7E6E6",
+    "REVIEW": "DDEBF7",
+    "NOT_CHECKED": "E7E6E6",
 }
 
 
@@ -85,7 +100,10 @@ def read_wagesheet(path: str) -> tuple[list[dict], list[str]]:
         rows = []
         for ws in wb.worksheets:
             rows = [list(r) for r in ws.iter_rows(values_only=True)]
-            if any(len(_map_headers(r)) >= 3 and "uan" in _map_headers(r) for r in rows[:20]):
+            if any(
+                len(_map_headers(r)) >= 3 and "uan" in _map_headers(r)
+                for r in rows[:20]
+            ):
                 break
     hdr_i, cols = None, {}
     for i, r in enumerate(rows[:20]):
@@ -94,31 +112,45 @@ def read_wagesheet(path: str) -> tuple[list[dict], list[str]]:
             hdr_i, cols = i, m
             break
     if hdr_i is None:
-        raise ValueError("Wagesheet needs a header row with at least 'Name' and 'UAN' columns.")
+        raise ValueError(
+            "Wagesheet needs a header row with at least 'Name' and 'UAN' columns."
+        )
     missing = [c for c in ("pf", "esic", "ip") if c not in cols]
-    warnings = [f"Wagesheet has no '{c}' column; that part is treated as blank." for c in missing]
+    warnings = [
+        f"Wagesheet has no '{c}' column; that part is treated as blank."
+        for c in missing
+    ]
 
     def cell(r, key):
         i = cols.get(key)
         return r[i] if i is not None and i < len(r) else None
 
     out, seen = [], Counter()
-    for n, r in enumerate(rows[hdr_i + 1:], start=hdr_i + 2):
+    for n, r in enumerate(rows[hdr_i + 1 :], start=hdr_i + 2):
         name = str(cell(r, "name") or "").strip()
         uan, ip = _digits(cell(r, "uan")), _digits(cell(r, "ip"))
         if not (name or uan or ip) or name.lower().startswith(("total", "grand total")):
             continue
-        out.append({
-            "row_no": n, "name": name, "uan": uan, "ip": ip,
-            "agency": str(cell(r, "agency") or "").strip(), "state": str(cell(r, "state") or "").strip(),
-            "pf_amt": _num(cell(r, "pf")), "esic_amt": _num(cell(r, "esic")),
-        })
+        out.append(
+            {
+                "row_no": n,
+                "name": name,
+                "uan": uan,
+                "ip": ip,
+                "agency": str(cell(r, "agency") or "").strip(),
+                "state": str(cell(r, "state") or "").strip(),
+                "pf_amt": _num(cell(r, "pf")),
+                "esic_amt": _num(cell(r, "esic")),
+            }
+        )
         for k in (uan, ip):
             if k:
                 seen[k] += 1
     dups = [k for k, c in seen.items() if c > 1]
     if dups:
-        warnings.append(f"{len(dups)} identifier(s) appear on more than one wagesheet row (e.g. {dups[0]}).")
+        warnings.append(
+            f"{len(dups)} identifier(s) appear on more than one wagesheet row (e.g. {dups[0]})."
+        )
     if not out:
         raise ValueError("Wagesheet has a header but no employee rows.")
     return out, warnings
@@ -132,34 +164,59 @@ def _fmt(x) -> str:
 def check(kind: str, name: str, ident: str, amt, ecr) -> dict:
     """kind is 'PF' or 'ESIC'. Returns status, reason, ecr_name, ecr_amount, difference."""
     label = "UAN" if kind == "PF" else "IP Number"
-    res = {"status": "", "reason": "", "ecr_name": "", "ecr_amount": None, "difference": None}
+    res = {
+        "status": "",
+        "reason": "",
+        "ecr_name": "",
+        "ecr_amount": None,
+        "difference": None,
+    }
     amt = amt or 0.0
     if ecr is None:
         res.update(status="NOT_CHECKED", reason=f"{kind} ECR not uploaded")
         return res
     if not ident:
         if amt:
-            res.update(status="MISSING", reason=f"No {label} in the wagesheet but {_fmt(amt)} was deducted")
+            res.update(
+                status="MISSING",
+                reason=f"No {label} in the wagesheet but {_fmt(amt)} was deducted",
+            )
         else:
-            res.update(status="NOT_APPLICABLE", reason=f"No {label} and no {kind} deduction in the wagesheet")
+            res.update(
+                status="NOT_APPLICABLE",
+                reason=f"No {label} and no {kind} deduction in the wagesheet",
+            )
         return res
     rec = ecr.get(ident)
     if rec is None:
         if amt:
-            res.update(status="MISSING", reason=f"{label} {ident} not found in the {kind} ECR (wagesheet deducted {_fmt(amt)})")
+            res.update(
+                status="MISSING",
+                reason=f"{label} {ident} not found in the {kind} ECR (wagesheet deducted {_fmt(amt)})",
+            )
         else:
-            res.update(status="NOT_APPLICABLE", reason=f"No {kind} deduction in the wagesheet and {label} not in the ECR")
+            res.update(
+                status="NOT_APPLICABLE",
+                reason=f"No {kind} deduction in the wagesheet and {label} not in the ECR",
+            )
         return res
 
     res["ecr_name"], res["ecr_amount"] = rec["name"], rec["amount"]
     ok, score, note = compare_names(name, rec["name"])
     if rec["amount"] is None:
-        res.update(status="REVIEW", reason="Found in the ECR but the amount could not be read from the PDF")
+        res.update(
+            status="REVIEW",
+            reason="Found in the ECR but the amount could not be read from the PDF",
+        )
         return res
     diff = round(rec["amount"] - amt, 2)
     res["difference"] = diff
     amount_ok = abs(diff) <= AMOUNT_TOL
-    extra = f" (listed {rec['count']} times in the ECR, amounts added)" if rec["count"] > 1 else ""
+    extra = (
+        f" (listed {rec['count']} times in the ECR, amounts added)"
+        if rec["count"] > 1
+        else ""
+    )
     if not ok:
         reason = f"Name differs: wagesheet '{name}' vs ECR '{rec['name']}' (similarity {score:.0%})"
         if not amount_ok:
@@ -168,11 +225,15 @@ def check(kind: str, name: str, ident: str, amt, ecr) -> dict:
     elif not amount_ok:
         res.update(
             status="AMOUNT_MISMATCH",
-            reason=f"Amount differs: wagesheet {_fmt(amt)} vs ECR {_fmt(rec['amount'])} (difference {diff:+,.2f})" + extra,
+            reason=f"Amount differs: wagesheet {_fmt(amt)} vs ECR {_fmt(rec['amount'])} (difference {diff:+,.2f})"
+            + extra,
         )
     else:
         tail = "" if note == "identical" else f"; name {note}"
-        res.update(status="MATCHED", reason=f"{label} found, amount {_fmt(amt)} matches" + tail + extra)
+        res.update(
+            status="MATCHED",
+            reason=f"{label} found, amount {_fmt(amt)} matches" + tail + extra,
+        )
     return res
 
 
@@ -182,14 +243,29 @@ def verify(sheet_rows: list[dict], pf, esic) -> tuple[list[dict], list[dict]]:
     for r in sheet_rows:
         p = check("PF", r["name"], r["uan"], r["pf_amt"], pf)
         e = check("ESIC", r["name"], r["ip"], r["esic_amt"], esic)
-        results.append({
-            "row_no": r["row_no"], "name": r["name"], "uan": r["uan"], "ip_number": r["ip"],
-            "agency": r["agency"], "state": r["state"],
-            "pf_wagesheet_amount": r["pf_amt"], "pf_ecr_name": p["ecr_name"], "pf_ecr_amount": p["ecr_amount"],
-            "pf_difference": p["difference"], "pf_status": p["status"], "pf_reason": p["reason"],
-            "esic_wagesheet_amount": r["esic_amt"], "esic_ecr_name": e["ecr_name"], "esic_ecr_amount": e["ecr_amount"],
-            "esic_difference": e["difference"], "esic_status": e["status"], "esic_reason": e["reason"],
-        })
+
+        results.append(
+            {
+                "row_no": r["row_no"],
+                "name": r["name"],
+                "uan": r["uan"],
+                "ip_number": r["ip"],
+                "agency": r["agency"],
+                "state": r["state"],
+                "pf_wagesheet_amount": r["pf_amt"],
+                "pf_ecr_name": p["ecr_name"],
+                "pf_ecr_amount": p["ecr_amount"],
+                "pf_difference": p["difference"],
+                "pf_status": p["status"],
+                "pf_reason": p["reason"],
+                "esic_wagesheet_amount": r["esic_amt"],
+                "esic_ecr_name": e["ecr_name"],
+                "esic_ecr_amount": e["ecr_amount"],
+                "esic_difference": e["difference"],
+                "esic_status": e["status"],
+                "esic_reason": e["reason"],
+            }
+        )
     extras = []
     for kind, ecr, key in (("PF", pf, "uan"), ("ESIC", esic, "ip")):
         if ecr is None:
@@ -197,7 +273,14 @@ def verify(sheet_rows: list[dict], pf, esic) -> tuple[list[dict], list[dict]]:
         listed = {r[key] for r in sheet_rows if r[key]}
         for ident, rec in ecr.items():
             if ident not in listed:
-                extras.append({"kind": kind, "identifier": ident, "name": rec["name"], "amount": rec["amount"]})
+                extras.append(
+                    {
+                        "kind": kind,
+                        "identifier": ident,
+                        "name": rec["name"],
+                        "amount": rec["amount"],
+                    }
+                )
     return results, extras
 
 
@@ -206,23 +289,41 @@ def summarize(results: list[dict]) -> dict:
     for kind in ("pf", "esic"):
         c = Counter(r[f"{kind}_status"] for r in results)
         s[kind] = {st: c.get(st, 0) for st in STATUSES}
-        s[kind]["deducted_total"] = round(sum(r[f"{kind}_wagesheet_amount"] or 0 for r in results), 2)
-        s[kind]["deposited_total_for_listed"] = round(sum(r[f"{kind}_ecr_amount"] or 0 for r in results), 2)
+        s[kind]["deducted_total"] = round(
+            sum(r[f"{kind}_wagesheet_amount"] or 0 for r in results), 2
+        )
+        s[kind]["deposited_total_for_listed"] = round(
+            sum(r[f"{kind}_ecr_amount"] or 0 for r in results), 2
+        )
     return s
 
 
 # ---------- Tool 3: export ----------
 RESULT_HEADERS = [
-    ("row_no", "Wagesheet row"), ("name", "Name"), ("uan", "UAN"), ("ip_number", "IP Number"),
-    ("agency", "Agency"), ("state", "State"),
-    ("pf_status", "PF status"), ("pf_reason", "PF reason"), ("pf_wagesheet_amount", "PF wagesheet"),
-    ("pf_ecr_amount", "PF ECR (EE share)"), ("pf_difference", "PF difference"), ("pf_ecr_name", "PF ECR name"),
-    ("esic_status", "ESIC status"), ("esic_reason", "ESIC reason"), ("esic_wagesheet_amount", "ESIC wagesheet"),
-    ("esic_ecr_amount", "ESIC ECR (IP contrib.)"), ("esic_difference", "ESIC difference"), ("esic_ecr_name", "ESIC ECR name"),
+    ("row_no", "Wagesheet row"),
+    ("name", "Name"),
+    ("uan", "UAN"),
+    ("ip_number", "IP Number"),
+    ("agency", "Agency"),
+    ("state", "State"),
+    ("pf_status", "PF status"),
+    ("pf_reason", "PF reason"),
+    ("pf_wagesheet_amount", "PF wagesheet"),
+    ("pf_ecr_amount", "PF ECR (EE share)"),
+    ("pf_difference", "PF difference"),
+    ("pf_ecr_name", "PF ECR name"),
+    ("esic_status", "ESIC status"),
+    ("esic_reason", "ESIC reason"),
+    ("esic_wagesheet_amount", "ESIC wagesheet"),
+    ("esic_ecr_amount", "ESIC ECR (IP contrib.)"),
+    ("esic_difference", "ESIC difference"),
+    ("esic_ecr_name", "ESIC ECR name"),
 ]
 
 
-def build_workbook(results: list[dict], extras: list[dict], summary: dict, warnings: list[str]) -> bytes:
+def build_workbook(
+    results: list[dict], extras: list[dict], summary: dict, warnings: list[str]
+) -> bytes:
     wb = Workbook()
     bold = Font(bold=True)
 
@@ -235,10 +336,24 @@ def build_workbook(results: list[dict], extras: list[dict], summary: dict, warni
         ws.append([st, summary["pf"][st], summary["esic"][st]])
         ws.cell(ws.max_row, 1).fill = PatternFill("solid", fgColor=COLOURS[st])
     ws.append(["Employees in wagesheet", summary["employees"], summary["employees"]])
-    ws.append(["Total deducted (wagesheet)", summary["pf"]["deducted_total"], summary["esic"]["deducted_total"]])
-    ws.append(["Total in ECR (employees listed)", summary["pf"]["deposited_total_for_listed"], summary["esic"]["deposited_total_for_listed"]])
+    ws.append(
+        [
+            "Total deducted (wagesheet)",
+            summary["pf"]["deducted_total"],
+            summary["esic"]["deducted_total"],
+        ]
+    )
+    ws.append(
+        [
+            "Total in ECR (employees listed)",
+            summary["pf"]["deposited_total_for_listed"],
+            summary["esic"]["deposited_total_for_listed"],
+        ]
+    )
     ws.append([])
-    ws.append([f"Name tolerance: see matching.py. Amount tolerance: +-{AMOUNT_TOL:g} rupee."])
+    ws.append(
+        [f"Name tolerance: see matching.py. Amount tolerance: +-{AMOUNT_TOL:g} rupee."]
+    )
     for w in warnings:
         ws.append(["Warning: " + w])
     ws.column_dimensions["A"].width = 34
@@ -251,7 +366,9 @@ def build_workbook(results: list[dict], extras: list[dict], summary: dict, warni
         ws.append([r.get(k) for k, _ in RESULT_HEADERS])
         for key in ("pf_status", "esic_status"):
             idx = [k for k, _ in RESULT_HEADERS].index(key) + 1
-            ws.cell(ws.max_row, idx).fill = PatternFill("solid", fgColor=COLOURS.get(r[key], "FFFFFF"))
+            ws.cell(ws.max_row, idx).fill = PatternFill(
+                "solid", fgColor=COLOURS.get(r[key], "FFFFFF")
+            )
     for i in range(1, len(RESULT_HEADERS) + 1):
         ws.column_dimensions[get_column_letter(i)].width = 16
     ws.column_dimensions["H"].width = 60

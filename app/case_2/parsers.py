@@ -38,15 +38,21 @@ def parse_line(line: str, kind: str):
             while j < len(toks) and _WORD.match(toks[j]):
                 name.append(toks[j])
                 j += 1
-            nums = [float(x.replace(",", "")) for x in toks[j:] if _NUM.match(x.replace(",", ""))]
-            return t, " ".join(name), nums
+            nums = [
+                float(x.replace(",", ""))
+                for x in toks[j:]
+                if _NUM.match(x.replace(",", ""))
+            ]
+            return t, " ".join(name[0:2] if kind == "PF" else name), nums
     return None
 
 
 def parse_ecr_pdfs(paths: list[str], kind: str, progress=None):
     """Returns (records, warnings). records[id] = {name, amount, count, wage}."""
     amt_i, wage_i, rate = (
-        (PF_EE_INDEX, PF_WAGE_INDEX, 0.12) if kind == "PF" else (ESIC_AMT_INDEX, ESIC_WAGE_INDEX, 0.0075)
+        (PF_EE_INDEX, PF_WAGE_INDEX, 0.12)
+        if kind == "PF"
+        else (ESIC_AMT_INDEX, ESIC_WAGE_INDEX, 0.0075)
     )
     recs, warnings = {}, []
     unreadable_amount, checked, plausible = 0, 0, 0
@@ -54,7 +60,9 @@ def parse_ecr_pdfs(paths: list[str], kind: str, progress=None):
         try:
             pdf = pdfplumber.open(path)
         except Exception as e:
-            raise ValueError(f"{os.path.basename(path)} could not be opened as a PDF ({type(e).__name__})")
+            raise ValueError(
+                f"{os.path.basename(path)} could not be opened as a PDF ({type(e).__name__})"
+            )
         with pdf:
             n = len(pdf.pages)
             for pno, page in enumerate(pdf.pages, 1):
@@ -86,7 +94,9 @@ def parse_ecr_pdfs(paths: list[str], kind: str, progress=None):
             "selectable text (scanned image PDFs are not supported)."
         )
     if unreadable_amount:
-        warnings.append(f"{kind} ECR: {unreadable_amount} row(s) had too few numeric columns to read the amount.")
+        warnings.append(
+            f"{kind} ECR: {unreadable_amount} row(s) had too few numeric columns to read the amount."
+        )
     if checked >= 5 and plausible / checked < 0.5:
         warnings.append(
             f"{kind} ECR: only {plausible}/{checked} rows have amount ~ {rate:.2%} of wages, so the column layout "
@@ -94,5 +104,7 @@ def parse_ecr_pdfs(paths: list[str], kind: str, progress=None):
         )
     dups = sum(1 for r in recs.values() if r["count"] > 1)
     if dups:
-        warnings.append(f"{kind} ECR: {dups} identifier(s) appear more than once; amounts were added up.")
+        warnings.append(
+            f"{kind} ECR: {dups} identifier(s) appear more than once; amounts were added up."
+        )
     return recs, warnings
